@@ -3,6 +3,7 @@ from data.chess_structs import GameSide, RichChessGame
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtSvgWidgets import QSvgWidget
 from data.data_manager import DataManager
+from functools import partial
 import chess.pgn
 import io
 
@@ -36,7 +37,7 @@ class GameDetailsDialog(QtWidgets.QDialog):
 
         self.main_layout.addWidget(self.__CreateGameDataWidget())
         if not self.error:
-            self.main_layout.addWidget(self.__CreateMoveGridWidget())
+            self.main_layout.addWidget(self.__CreateMoveWidget())
             self.main_layout.addWidget(self.__CreateSVGWidget())
             self.__RefreshSVG(1)
         else:
@@ -72,11 +73,25 @@ class GameDetailsDialog(QtWidgets.QDialog):
             wid.setEnabled(False)
             grid_layout.addWidget(wid, i, 2)
 
+        grid_layout.setRowStretch(7, 10)
+
         widget.setLayout(grid_layout)
+        return widget
+
+    def __CreateMoveWidget(self):
+        widget = QtWidgets.QWidget(self)
+        layout = QtWidgets.QVBoxLayout(widget)
+
+        layout.addWidget(self.__CreateMoveGridWidget())
+        layout.addWidget(self.__CreateMoveArrows())
+
+        widget.setLayout(layout)
         return widget
 
     def __CreateMoveGridWidget(self):
         self.table_widget = QtWidgets.QTableWidget(self)
+        # Prevent default table widget navigation
+        self.table_widget.keyPressEvent = lambda *args, **kwargs: self.keyPressEvent(*args, **kwargs)
         self.table_widget.setColumnCount(2)
         self.table_widget.setHorizontalHeaderLabels(['White', 'Black'])
         self.table_widget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
@@ -97,8 +112,48 @@ class GameDetailsDialog(QtWidgets.QDialog):
             col = (col + 1) % 2
             cnt += 1
        
-        self.table_widget.itemClicked.connect(self.__OnMoveSelected)
+        #self.table_widget.itemClicked.connect(self.__OnMoveSelected)
+        self.table_widget.itemSelectionChanged.connect(self.__OnMoveSelected)
         return self.table_widget
+
+    def __CreateMoveArrows(self):
+        widget = QtWidgets.QWidget(self)
+        layout = QtWidgets.QHBoxLayout(widget)
+        layout.setContentsMargins(0,0,0,0)
+
+        self.prev_button = QtWidgets.QPushButton("<", widget)
+        self.next_button = QtWidgets.QPushButton(">", widget)
+
+        self.prev_button.clicked.connect(partial(self.__OnChangeMove, -1))
+        self.next_button.clicked.connect(partial(self.__OnChangeMove, 1))
+
+        layout.addWidget(self.prev_button)
+        layout.addWidget(self.next_button)
+        widget.setLayout(layout)
+
+        return widget
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_Left:
+            self.__OnChangeMove(-1)
+            return
+        elif event.key() == QtCore.Qt.Key_Right:
+            self.__OnChangeMove(1)
+            return
+        super(GameDetailsDialog, self).keyPressEvent(event)
+
+    def __OnChangeMove(self, delta):
+        move_id = min(max(0, self.current_move + delta - 1), len(self.moves) - 1)
+        row, col = move_id // 2, move_id % 2
+
+        self.table_widget.clearSelection()
+        self.table_widget.setRangeSelected(QtWidgets.QTableWidgetSelectionRange(row, col, row, col), True) 
+        self.__AutoScroll()
+
+    def __AutoScroll(self):
+        items = self.table_widget.selectedItems()
+        if len(items):
+            self.table_widget.scrollToItem(items[0])
 
     def __CreateSVGWidget(self):
         self.svg_wid = QSvgWidget(self)
@@ -109,9 +164,10 @@ class GameDetailsDialog(QtWidgets.QDialog):
         pgn_game = chess.pgn.read_game(str_io)
         return pgn_game
 
-    def __OnMoveSelected(self, item):
-        if item:
-            move_id = item.data(QtCore.Qt.UserRole)
+    def __OnMoveSelected(self):
+        items = self.table_widget.selectedItems()
+        if len(items):
+            move_id = items[0].data(QtCore.Qt.UserRole)
             
             if move_id:
                 self.__RefreshSVG(move_id)

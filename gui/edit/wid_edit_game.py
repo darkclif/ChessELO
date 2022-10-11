@@ -63,6 +63,7 @@ class GameEditDialog(QtWidgets.QDialog):
 
         self.main_layout.addWidget(QtWidgets.QLabel('PGN', self), 5, 1)
         self.edits.wid_pgn = QtWidgets.QTextEdit(self)
+        self.edits.wid_pgn.setAcceptRichText(False)
         self.main_layout.addWidget(self.edits.wid_pgn, 5, 2)
 
         self.__RefreshGameDataUI()
